@@ -27,29 +27,77 @@ export const AnnualView: React.FC<AnnualViewProps> = ({
 }) => {
   const [editingMilestone, setEditingMilestone] = useState<Milestone | null | 'new'>(null);
 
-  // Calcular projeção simples
-  const growthCategoriesAmount = currentMonthData.categories.reduce((acc, cat) => {
-     if (cat.id === 'investments' || cat.id.startsWith('cat_meta_')) {
-         return acc + cat.plannedAmount;
-     }
-     return acc;
+  // Calculate historical savings (before current year)
+  const historicalSavings = Object.entries(fullFinancialData).reduce((acc, [key, data]) => {
+    const [yearStr] = key.split('-');
+    const year = parseInt(yearStr);
+    if (year < currentYear) {
+      const expenses = data.categories.reduce((sum, cat) => {
+        const isInvestment = cat.id === 'investments' || cat.id.startsWith('cat_meta_');
+        return !isInvestment ? sum + cat.plannedAmount : sum;
+      }, 0);
+      return acc + (data.income - expenses);
+    }
+    return acc;
   }, 0);
 
-  const totalAllocated = currentMonthData.categories.reduce((acc, cat) => acc + cat.plannedAmount, 0);
-  const unallocated = Math.max(0, currentMonthData.income - totalAllocated);
-  const effectiveMonthlyGrowth = unallocated + growthCategoriesAmount;
-  const startValue = milestones.reduce((acc, m) => acc + m.currentAmount, 0); 
+  const baseStartValue = milestones.reduce((acc, m) => acc + m.initialAmount, 0) + historicalSavings;
+
+  const currentMonthExpenses = currentMonthData.categories.reduce((acc, cat) => {
+      const isInvestment = cat.id === 'investments' || cat.id.startsWith('cat_meta_');
+      return !isInvestment ? acc + cat.plannedAmount : acc;
+  }, 0);
+  const baselineSavings = currentMonthData.income - currentMonthExpenses;
+
+  let currentAccumulated = baseStartValue;
   
   const projectionData = Array.from({ length: 12 }, (_, i) => {
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const monthKey = `${currentYear}-${String(i + 1).padStart(2, '0')}`;
+    const data = fullFinancialData[monthKey];
+    
+    let monthlySavings = baselineSavings;
+    if (data) {
+        const expenses = data.categories.reduce((acc, cat) => {
+            const isInvestment = cat.id === 'investments' || cat.id.startsWith('cat_meta_');
+            return !isInvestment ? acc + cat.plannedAmount : acc;
+        }, 0);
+        monthlySavings = data.income - expenses;
+    }
+
+    currentAccumulated += monthlySavings;
+
     return {
       month: monthNames[i],
-      value: startValue + (effectiveMonthlyGrowth * (i + 1))
+      value: currentAccumulated
     };
   });
 
-  const finalAmount = projectionData[11]?.value || startValue;
-  const growth = startValue > 0 ? ((finalAmount - startValue) / startValue) * 100 : 0;
+  const finalAmount = projectionData[11]?.value || baseStartValue;
+  const growth = baseStartValue > 0 ? ((finalAmount - baseStartValue) / baseStartValue) * 100 : 0;
+
+  const milestonesWithProgress = milestones.map(m => {
+      const accumulatedFromMonths = Object.values(fullFinancialData).reduce((acc, data) => {
+          const cat = data.categories.find(c => c.id === `cat_meta_${m.id}`);
+          return acc + (cat ? cat.plannedAmount : 0);
+      }, 0);
+      
+      const currentAmount = m.initialAmount + accumulatedFromMonths;
+      
+      const currentMonthCat = currentMonthData.categories.find(c => c.id === `cat_meta_${m.id}`);
+      const monthlyRate = currentMonthCat ? currentMonthCat.plannedAmount : 0;
+      
+      let monthsToReach = -1;
+      if (m.targetAmount > currentAmount && monthlyRate > 0) {
+          monthsToReach = Math.ceil((m.targetAmount - currentAmount) / monthlyRate);
+      }
+
+      return {
+          ...m,
+          currentAmount,
+          monthsToReach
+      };
+  });
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(val);
 
@@ -153,11 +201,11 @@ export const AnnualView: React.FC<AnnualViewProps> = ({
 
       {/* Milestones List */}
       <div className="grid gap-3">
-        {milestones.length === 0 && (
+        {milestonesWithProgress.length === 0 && (
             <div className="text-center py-8 text-white/30 text-sm">Nenhuma meta cadastrada.</div>
         )}
 
-        {milestones.map((milestone, index) => {
+        {milestonesWithProgress.map((milestone, index) => {
             const progress = milestone.targetAmount > 0 ? (milestone.currentAmount / milestone.targetAmount) * 100 : 0;
             const Icon = iconMap[milestone.icon] || ShieldCheck;
 
@@ -180,7 +228,13 @@ export const AnnualView: React.FC<AnnualViewProps> = ({
                         </div>
                         <div className="text-right">
                             <p className="text-sm font-bold text-white">{formatCurrency(milestone.currentAmount)}</p>
-                            <p className="text-[10px] text-sage">{progress >= 100 ? 'Completa' : 'Em andamento'}</p>
+                            <p className="text-[10px] text-sage">
+                                {progress >= 100 
+                                    ? 'Completa' 
+                                    : milestone.monthsToReach > 0 
+                                        ? `Faltam ~${milestone.monthsToReach} meses` 
+                                        : 'Em andamento'}
+                            </p>
                         </div>
                     </div>
                     <div className="relative h-1.5 w-full bg-black/40 rounded-full overflow-hidden">
@@ -232,7 +286,7 @@ export const AnnualView: React.FC<AnnualViewProps> = ({
             
             {/* Totais do Ano */}
             <div className="bg-white/5 border-t border-white/10 p-4 flex justify-between items-center text-sm">
-                <span className="text-white/40 font-medium pl-2">Total Acumulado</span>
+                <span className="text-white/40 font-medium pl-2">Economia no Ano</span>
                 <span className="text-white font-bold pr-2 text-lg">
                     {formatCurrency(annualBudget.reduce((acc, curr) => acc + curr.savings, 0))}
                 </span>

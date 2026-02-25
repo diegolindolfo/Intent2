@@ -14,7 +14,7 @@ interface MilestoneModalProps {
 export const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose, initialData, onSave, onDelete }) => {
   const [name, setName] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
-  const [currentAmount, setCurrentAmount] = useState('');
+  const [initialAmount, setInitialAmount] = useState('');
   const [icon, setIcon] = useState('ShieldCheck');
   const [color, setColor] = useState('gold');
 
@@ -23,13 +23,13 @@ export const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose,
       if (initialData) {
         setName(initialData.name);
         setTargetAmount(initialData.targetAmount.toString());
-        setCurrentAmount(initialData.currentAmount.toString());
+        setInitialAmount(initialData.initialAmount.toString());
         setIcon(initialData.icon);
         setColor(initialData.color);
       } else {
         setName('');
         setTargetAmount('');
-        setCurrentAmount('');
+        setInitialAmount('');
         setIcon('ShieldCheck');
         setColor('gold');
       }
@@ -44,7 +44,7 @@ export const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose,
       id: initialData?.id,
       name,
       targetAmount: parseFloat(targetAmount) || 0,
-      currentAmount: parseFloat(currentAmount) || 0,
+      initialAmount: parseFloat(initialAmount) || 0,
       icon,
       color: color as any
     });
@@ -96,13 +96,13 @@ export const MilestoneModal: React.FC<MilestoneModalProps> = ({ isOpen, onClose,
 
             {/* Valor Atual */}
             <div>
-                <label className="block text-white/40 text-xs uppercase tracking-widest mb-2 font-medium">Guardado</label>
+                <label className="block text-white/40 text-xs uppercase tracking-widest mb-2 font-medium">Saldo Inicial</label>
                 <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm">R$</span>
                     <input 
                     type="number" 
-                    value={currentAmount}
-                    onChange={(e) => setCurrentAmount(e.target.value)}
+                    value={initialAmount}
+                    onChange={(e) => setInitialAmount(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl pl-8 pr-3 py-3 text-white focus:outline-none focus:border-sage transition-colors placeholder-white/20 text-sm"
                     placeholder="0"
                     />

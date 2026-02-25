@@ -28,8 +28,8 @@ const defaultCategories: Category[] = [
 ];
 
 const defaultMilestones: Milestone[] = [
-    { id: '1', name: 'Reserva de Emergência', targetAmount: 50000, currentAmount: 0, icon: 'ShieldCheck', color: 'gold' },
-    { id: '2', name: 'Viagem 2026', targetAmount: 20000, currentAmount: 0, icon: 'Plane', color: 'sage' }
+    { id: '1', name: 'Reserva de Emergência', targetAmount: 50000, initialAmount: 0, icon: 'ShieldCheck', color: 'gold' },
+    { id: '2', name: 'Viagem 2026', targetAmount: 20000, initialAmount: 0, icon: 'Plane', color: 'sage' }
 ];
 
 export default function App() {
@@ -56,7 +56,15 @@ export default function App() {
 
   const [milestones, setMilestones] = useState<Milestone[]>(() => {
     const saved = localStorage.getItem('intent_milestones');
-    return saved ? JSON.parse(saved) : defaultMilestones;
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Migrate old data
+      return parsed.map((m: any) => ({
+        ...m,
+        initialAmount: m.initialAmount !== undefined ? m.initialAmount : (m.currentAmount || 0)
+      }));
+    }
+    return defaultMilestones;
   });
 
   useEffect(() => {
@@ -75,48 +83,39 @@ export default function App() {
   const currentMonthKey = getMonthKey(currentDate);
   
   const currentData: MonthlyData = useMemo(() => {
+    const baseCategories = [...defaultCategories];
+    milestones.forEach(m => {
+      if (!baseCategories.find(c => c.id === `cat_meta_${m.id}`)) {
+        baseCategories.push({
+          id: `cat_meta_${m.id}`,
+          name: m.name,
+          plannedAmount: 0,
+          icon: m.icon || 'TrendingUp',
+          color: 'gold'
+        });
+      }
+    });
+
     if (financialData[currentMonthKey]) {
       const existingData = financialData[currentMonthKey];
       const mergedCategories = [...existingData.categories];
-      defaultCategories.forEach(dc => {
-        if (!mergedCategories.find(c => c.id === dc.id)) {
-          mergedCategories.push({ ...dc });
+      baseCategories.forEach(bc => {
+        if (!mergedCategories.find(c => c.id === bc.id)) {
+          mergedCategories.push({ ...bc });
         }
       });
       return { ...existingData, categories: mergedCategories };
     }
     return {
       income: 0,
-      categories: JSON.parse(JSON.stringify(defaultCategories))
+      categories: JSON.parse(JSON.stringify(baseCategories))
     };
-  }, [financialData, currentMonthKey]);
+  }, [financialData, currentMonthKey, milestones]);
 
   const handleAddMilestone = (m: Omit<Milestone, 'id'>) => {
     const newId = Date.now().toString();
     const newMilestone = { ...m, id: newId };
     setMilestones(prev => [...prev, newMilestone]);
-
-    setFinancialData(prev => {
-        const monthData = prev[currentMonthKey] || { income: 0, categories: JSON.parse(JSON.stringify(defaultCategories)) };
-        const exists = monthData.categories.some(c => c.name === m.name);
-        if (!exists) {
-            const newCategory: Category = {
-                id: `cat_meta_${newId}`,
-                name: m.name,
-                plannedAmount: 0,
-                icon: m.icon || 'TrendingUp',
-                color: 'gold'
-            };
-            return {
-                ...prev,
-                [currentMonthKey]: {
-                    ...monthData,
-                    categories: [...monthData.categories, newCategory]
-                }
-            };
-        }
-        return prev;
-    });
   };
 
   const handleEditMilestone = (m: Milestone) => {
@@ -149,10 +148,6 @@ export default function App() {
   };
 
   const handleUpdateCategory = (id: string, val: number) => {
-    const oldCategory = currentData.categories.find(c => c.id === id);
-    const oldAmount = oldCategory ? oldCategory.plannedAmount : 0;
-    const diff = val - oldAmount;
-
     setFinancialData(prev => {
       const newData = { ...currentData };
       const catIndex = newData.categories.findIndex(c => c.id === id);
@@ -161,18 +156,6 @@ export default function App() {
       }
       return { ...prev, [currentMonthKey]: newData };
     });
-
-    if (id.startsWith('cat_meta_')) {
-        const milestoneId = id.replace('cat_meta_', '');
-        if (diff !== 0) {
-            setMilestones(prev => prev.map(m => {
-                if (m.id === milestoneId) {
-                    return { ...m, currentAmount: Math.max(0, m.currentAmount + diff) };
-                }
-                return m;
-            }));
-        }
-    }
   };
 
   const handleUpdateCategoryMeta = (id: string, updates: Partial<Category>) => {

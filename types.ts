@@ -12,7 +12,7 @@ export interface Milestone {
   id: string;
   name: string;
   targetAmount: number;
-  currentAmount: number;
+  initialAmount: number;
   icon: string;
   color: 'sage' | 'gold' | 'white';
 }
